@@ -1,2 +1,2 @@
 # beanbagneutralizer
-To distract the cat lovinging known as the Demonic Beanbag.
+To distract the cat lovingly known as the Demonic Beanbag.
