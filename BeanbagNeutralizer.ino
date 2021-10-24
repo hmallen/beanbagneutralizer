@@ -7,9 +7,11 @@
 #include <Arduino.h>
 #include <ServoEasing.h>
 #include <Preferences.h>
+#include <PubSubClient.h>
 
 #define SERVO_MIN_DEGREE 0
 #define SERVO_MAX_DEGREE 270
+#define SERVO_ATTACH_DEGREE 67
 
 #define TOUCH_PIN T0
 #define TOUCH_THRESHOLD 40
@@ -19,7 +21,7 @@ Preferences preferences;
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
 
-AsyncWebServer server(80);
+AsyncWebServer webServer(80);
 
 const int ledPin = 2;
 const int potPin = 32;
@@ -56,6 +58,29 @@ uint16_t strobeDuration;
 uint16_t sirenDuration;
 uint16_t laserDuration;
 
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
+
+IPAddress mqttServer(192, 168, 1, 6);
+
+void mqttReconnect() {
+  while (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    
+    if (mqttClient.connect("arduinoClient")) {
+      Serial.println("connected");
+      mqttClient.publish("outTopic","hello world");
+      mqttClient.subscribe("inTopic");
+    }
+    else {
+      mqttClient.print("failed, rc=");
+      mqttClient.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 void mqttCallback(char* topic, byte* payload, uint8_t length) {
   Serial.print(F("MQTT message received ["));
   Serial.print(topic);
@@ -81,6 +106,7 @@ void calibratePot() {
       minSet = true;
     }
   }
+  preferences.putInt("potMin", potMin);
 
   Serial.println(F("Move potentiometer to MAX position then tap touch sensor to confirm."));
   while (maxSet == false) {
@@ -92,15 +118,32 @@ void calibratePot() {
       maxSet = true;
     }
   }
+  preferences.putInt("potMax", potMax);
 }
 
 void calibrateServos() {
   Serial.println(F("Calibrating servos."));
 
-  xSet = false;
-  ySet = false;
+  xMinSet = false;
+  xMaxSet = false;
+  yMinSet = false;
+  yMaxSet = false;
 
+  while (xMinSet == false) {
+    //
+  }
 
+  while (xMaxSet == false) {
+    //
+  }
+
+  while (yMinSet == false) {
+    //
+  }
+
+  while (yMaxSet == false) {
+    //
+  }
 }
 
 void setup(void) {
@@ -152,17 +195,20 @@ void setup(void) {
     digitalWrite(ledPin, HIGH);
     calibratePot();
     digitalWrite(ledPin, LOW);
+    Serial.println(F("Restarting ESP32..."));
+    delay(1000);
+    ESP.restart();
   }
 
   Serial.print(F("Attach servo at pin "));
   Serial.println(xServoPin);
-  if (ServoX.attach(xServoPin, 67) == INVALID_SERVO) {
+  if (ServoX.attach(xServoPin, SERVO_ATTACH_DEGREE) == INVALID_SERVO) {
     Serial.println(F("Error attaching servo"));
   }
 
   Serial.print(F("Attach servo at pin "));
   Serial.println(yServoPin);
-  if (ServoY.attach(yServoPin, 67) == INVALID_SERVO) {
+  if (ServoY.attach(yServoPin, SERVO_ATTACH_DEGREE) == INVALID_SERVO) {
     Serial.println(F("Error attaching servo"));
     while (true) {
       digitalWrite(ledPin, HIGH);
@@ -208,13 +254,10 @@ void setup(void) {
     }
   }
 
-  ServoXControl.minDegree = 45;
-  ServoXControl.maxDegree = 90;
-  ServoYControl.minDegree = 45;
-  ServoYControl.maxDegree = 90;
-
-  //ServoX.write(90);
-  //ServoY.write(90);
+  ServoXControl.minDegree = xMin;
+  ServoXControl.maxDegree = xMax;
+  ServoYControl.minDegree = yMin;
+  ServoYControl.maxDegree = yMax;
 
   Serial.println(F("Marking border of laser area."));
   ServoX.write(ServoXControl.minDegree);
@@ -225,7 +268,6 @@ void setup(void) {
   ServoY.easeTo(ServoYControl.maxDegree, 50);
   ServoX.easeTo(ServoXControl.minDegree, 50);
   ServoY.easeTo(ServoYControl.minDegree, 50);
-
   analogWrite(laserPin, 0);
 
   delay(4000);
@@ -245,12 +287,12 @@ void setup(void) {
   Serial.print(F("IP address: "));
   Serial.println(WiFi.localIP());
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
+  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
     request->send(200, "text/plain", "Demonic Beanbag Neutralizer v0.1");
   });
 
-  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
-  server.begin();
+  AsyncElegantOTA.begin(&webServer);    // Start ElegantOTA
+  webServer.begin();
   Serial.println("HTTP server started");
 
   digitalWrite(ledPin, HIGH);
