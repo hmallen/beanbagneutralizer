@@ -9,9 +9,10 @@
 #include <Preferences.h>
 #include <PubSubClient.h>
 
-#define SERVO_MIN_DEGREE 0
-#define SERVO_MAX_DEGREE 270
-#define SERVO_ATTACH_DEGREE 67
+#define X_MICROS_0_DEG 0
+#define X_MICROS_180_DEG 2500
+#define Y_MICROS_0_DEG 0
+#define Y_MICROS_180_DEG 2500
 
 #define TOUCH_PIN T0
 #define TOUCH_THRESHOLD 40
@@ -33,8 +34,8 @@ const int yServoPin = 18;
 
 int potMin;
 int potMax;
-int xMin, xMax;
-int yMin, yMax;
+int xMinDegree, xMaxDegree;
+int yMinDegree, yMaxDegree;
 
 struct ServoControlStruct {
   uint16_t minDegree;
@@ -66,15 +67,15 @@ IPAddress mqttServer(192, 168, 1, 6);
 void mqttReconnect() {
   while (!mqttClient.connected()) {
     Serial.print("Attempting MQTT connection...");
-    
+
     if (mqttClient.connect("arduinoClient")) {
       Serial.println("connected");
-      mqttClient.publish("outTopic","hello world");
+      mqttClient.publish("outTopic", "hello world");
       mqttClient.subscribe("inTopic");
     }
     else {
       mqttClient.print("failed, rc=");
-      mqttClient.print(client.state());
+      mqttClient.print(mqttClient.state());
       Serial.println(" try again in 5 seconds");
       delay(5000);
     }
@@ -93,8 +94,8 @@ void mqttCallback(char* topic, byte* payload, uint8_t length) {
 void calibratePot() {
   Serial.println(F("Calibrating potentiometer."));
 
-  minSet = false;
-  maxSet = false;
+  bool minSet = false;
+  bool maxSet = false;
 
   Serial.println(F("Move potentiometer to MIN position then tap touch sensor to confirm."));
   while (minSet == false) {
@@ -122,12 +123,34 @@ void calibratePot() {
 }
 
 void calibrateServos() {
+  /*
+      Servo attach parameters:
+      attach(int aPin, int aInitialDegree, int aMicrosecondsForServo0Degree, int aMicrosecondsForServo180Degree)
+  */
+  Serial.print(F("Attaching X servo at pin "));
+  Serial.println(xServoPin);
+  if (ServoX.attach(xServoPin, 90, X_MICROS_0_DEG, X_MICROS_180_DEG) == INVALID_SERVO) {
+    Serial.println(F("Error attaching servo"));
+  }
+
+  Serial.print(F("Attaching Y servo at pin "));
+  Serial.println(yServoPin);
+  if (ServoY.attach(yServoPin, 90, Y_MICROS_0_DEG, Y_MICROS_180_DEG) == INVALID_SERVO) {
+    Serial.println(F("Error attaching servo"));
+    while (true) {
+      digitalWrite(ledPin, HIGH);
+      delay(100);
+      digitalWrite(ledPin, LOW);
+      delay(100);
+    }
+  }
+
   Serial.println(F("Calibrating servos."));
 
-  xMinSet = false;
-  xMaxSet = false;
-  yMinSet = false;
-  yMaxSet = false;
+  bool xMinSet = false;
+  bool xMaxSet = false;
+  bool yMinSet = false;
+  bool yMaxSet = false;
 
   while (xMinSet == false) {
     //
@@ -181,6 +204,9 @@ void setup(void) {
     digitalWrite(ledPin, HIGH);
     calibratePot();
     digitalWrite(ledPin, LOW);
+    Serial.println(F("Restarting ESP32..."));
+    delay(1000);
+    ESP.restart();
   }
 
   delay(1000);
@@ -195,20 +221,79 @@ void setup(void) {
     digitalWrite(ledPin, HIGH);
     calibratePot();
     digitalWrite(ledPin, LOW);
+
     Serial.println(F("Restarting ESP32..."));
     delay(1000);
     ESP.restart();
   }
 
-  Serial.print(F("Attach servo at pin "));
+  for (int x = 0; x < 10; x++) {
+    digitalWrite(ledPin, HIGH);
+    delay(100);
+    digitalWrite(ledPin, LOW);
+    delay(100);
+  }
+  //delay(1000);
+
+  xMinDegree = preferences.getInt("xMinDegree", -1);
+  xMaxDegree = preferences.getInt("xMaxDegree", -1);
+  yMinDegree = preferences.getInt("yMinDegree", -1);
+  yMaxDegree = preferences.getInt("yMaxDegree", -1);
+
+  if (
+    xMinDegree == -1 ||
+    xMaxDegree == -1 ||
+    yMinDegree == -1 ||
+    yMaxDegree == -1
+  ) {
+    digitalWrite(ledPin, HIGH);
+    calibrateServos();
+    digitalWrite(ledPin, LOW);
+
+    Serial.println(F("Restarting ESP32..."));
+    delay(1000);
+    ESP.restart();
+  }
+
+  else if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+    digitalWrite(ledPin, HIGH);
+    delay(100);
+    digitalWrite(ledPin, LOW);
+    while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      delay(10);
+    }
+    digitalWrite(ledPin, HIGH);
+    calibrateServos();
+    digitalWrite(ledPin, LOW);
+
+    Serial.println(F("Restarting ESP32..."));
+    delay(1000);
+    ESP.restart();
+  }
+
+  ServoXControl.minDegree = xMinDegree;
+  ServoXControl.maxDegree = xMaxDegree;
+  ServoYControl.minDegree = yMinDegree;
+  ServoYControl.maxDegree = yMaxDegree;
+
+  Serial.print(F("ServoXControl.minDegree: ")); Serial.println(ServoXControl.minDegree);
+  Serial.print(F("ServoXControl.maxDegree: ")); Serial.println(ServoXControl.maxDegree);
+  Serial.print(F("ServoYControl.minDegree: ")); Serial.println(ServoYControl.minDegree);
+  Serial.print(F("ServoYControl.maxDegree: ")); Serial.println(ServoYControl.maxDegree);
+
+  /*
+      Servo attach parameters:
+      attach(int aPin, int aInitialDegree, int aMicrosecondsForServo0Degree, int aMicrosecondsForServo180Degree)
+  */
+  Serial.print(F("Attaching X servo at pin "));
   Serial.println(xServoPin);
-  if (ServoX.attach(xServoPin, SERVO_ATTACH_DEGREE) == INVALID_SERVO) {
+  if (ServoX.attach(xServoPin, (int)((ServoXControl.maxDegree + ServoXControl.minDegree) / 2), X_MICROS_0_DEG, X_MICROS_180_DEG) == INVALID_SERVO) {
     Serial.println(F("Error attaching servo"));
   }
 
-  Serial.print(F("Attach servo at pin "));
+  Serial.print(F("Attaching Y servo at pin "));
   Serial.println(yServoPin);
-  if (ServoY.attach(yServoPin, SERVO_ATTACH_DEGREE) == INVALID_SERVO) {
+  if (ServoY.attach(yServoPin, (int)((ServoYControl.maxDegree + ServoYControl.minDegree) / 2), Y_MICROS_0_DEG, Y_MICROS_180_DEG) == INVALID_SERVO) {
     Serial.println(F("Error attaching servo"));
     while (true) {
       digitalWrite(ledPin, HIGH);
@@ -217,47 +302,6 @@ void setup(void) {
       delay(100);
     }
   }
-
-  delay(1000);
-
-  int touchDetected = 0;
-  for (int i = 0; i < 5; i++) {
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      digitalWrite(ledPin, HIGH);
-      delay(100);
-      digitalWrite(ledPin, LOW);
-      touchDetected++;
-    }
-    delay(500);
-    if (touchDetected >= 3) {
-      digitalWrite(ledPin, HIGH);
-      calibrateServos();
-      digitalWrite(ledPin, LOW);
-      break;
-    }
-  }
-  else {
-    xMin = preferences.getInt("xMin", -1);
-    xMax = preferences.getInt("xMax", -1);
-    yMin = preferences.getInt("yMin", -1);
-    yMax = preferences.getInt("yMax", -1);
-
-    if (
-      xMin == -1 ||
-      xMax == -1 ||
-      yMin == -1 ||
-      yMax == -1
-    ) {
-      digitalWrite(ledPin, HIGH);
-      calibrateServos();
-      digitalWrite(ledPin, LOW);
-    }
-  }
-
-  ServoXControl.minDegree = xMin;
-  ServoXControl.maxDegree = xMax;
-  ServoYControl.minDegree = yMin;
-  ServoYControl.maxDegree = yMax;
 
   Serial.println(F("Marking border of laser area."));
   ServoX.write(ServoXControl.minDegree);
