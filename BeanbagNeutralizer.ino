@@ -9,13 +9,13 @@
 #include <Preferences.h>
 #include <PubSubClient.h>
 
-#define X_MICROS_0_DEG 0
-#define X_MICROS_180_DEG 2500
-#define Y_MICROS_0_DEG 0
-#define Y_MICROS_180_DEG 2500
+#define X_MICROS_0_DEG 600
+#define X_MICROS_180_DEG 2400
+#define Y_MICROS_0_DEG 600
+#define Y_MICROS_180_DEG 2400
 
 #define TOUCH_PIN T0
-#define TOUCH_THRESHOLD 40
+#define TOUCH_THRESHOLD 5
 
 Preferences preferences;
 
@@ -29,12 +29,11 @@ const int potPin = 32;
 const int strobePin = 33;
 const int sirenPin = 23;
 const int laserPin = 25; // A0
-const int xServoPin = 5;
+const int xServoPin = 19;
 const int yServoPin = 18;
 
 int potMin;
 int potMax;
-
 int xMinDegree, xMaxDegree;
 int yMinDegree, yMaxDegree;
 
@@ -67,17 +66,17 @@ IPAddress mqttServer(192, 168, 1, 6);
 
 void mqttReconnect() {
   while (!mqttClient.connected()) {
-    Serial.print(F("Attempting MQTT connection..."));
+    Serial.print("Attempting MQTT connection...");
 
     if (mqttClient.connect("arduinoClient")) {
-      Serial.println(F("connected"));
+      Serial.println("connected");
       mqttClient.publish("outTopic", "hello world");
       mqttClient.subscribe("inTopic");
     }
     else {
       mqttClient.print("failed, rc=");
       mqttClient.print(mqttClient.state());
-      Serial.println(F(" try again in 5 seconds"));
+      Serial.println(" try again in 5 seconds");
       delay(5000);
     }
   }
@@ -131,66 +130,60 @@ void setServoRango() {
   bool yMinSet = false;
   bool yMaxSet = false;
 
-  int servoPos;
-
-  Serial.println(F("Move servo to minimum X value. (Left boundary)"));
   while (xMinSet == false) {
-    servoPos = map(analogRead(potPin), potMin, potMax, 0, 270);
-    ServoX.write(servoPos);
-    delay(10);
+    int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
+    ServoX.easeTo(servoVal, 50);
     if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      xMinDegree = servoPos;
+      xMinDegree = servoVal;
+      Serial.print(F("xMinDegree: ")); Serial.println(xMinDegree);
       xMinSet = true;
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(10);
       }
-      Serial.print(F("xMinDegree: ")); Serial.println(xMinDegree);
     }
+    delay(100);
   }
 
-  Serial.println(F("Move servo to maximum X value. (Right boundary)"));
   while (xMaxSet == false) {
-    servoPos = map(analogRead(potPin), potMin, potMax, 0, 270);
-    ServoX.write(servoPos);
-    delay(10);
+    int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
+    ServoX.easeTo(servoVal, 50);
     if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      xMaxDegree = servoPos;
+      xMaxDegree = servoVal;
+      Serial.print(F("xMaxDegree: ")); Serial.println(xMaxDegree);
       xMaxSet = true;
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(10);
       }
-      Serial.print(F("xMaxDegree: ")); Serial.println(xMaxDegree);
     }
+    delay(100);
   }
 
-  Serial.println(F("Move servo to minimum Y value. (Bottom boundary)"));
   while (yMinSet == false) {
-    servoPos = map(analogRead(potPin), potMin, potMax, 0, 270);
-    ServoY.write(servoPos);
-    delay(10);
+    int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
+    ServoY.easeTo(servoVal, 50);
     if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      yMinDegree = servoPos;
+      yMinDegree = servoVal;
+      Serial.print(F("yMinDegree: ")); Serial.println(yMinDegree);
       yMinSet = true;
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(10);
       }
-      Serial.print(F("yMinDegree: ")); Serial.println(yMinDegree);
     }
+    delay(100);
   }
 
-  Serial.println(F("Move servo to maximum Y value. (Top boundary)"));
   while (yMaxSet == false) {
-    servoPos = map(analogRead(potPin), potMin, potMax, 0, 270);
-    ServoY.write(servoPos);
-    delay(10);
+    int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
+    ServoY.easeTo(servoVal, 50);
     if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      yMaxDegree = servoPos;
+      yMaxDegree = servoVal;
+      Serial.print(F("yMaxDegree: ")); Serial.println(yMaxDegree);
       yMaxSet = true;
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(10);
       }
-      Serial.print(F("yMaxDegree: ")); Serial.println(yMaxDegree);
     }
+    delay(100);
   }
 }
 
@@ -222,10 +215,34 @@ void setup(void) {
 
   preferences.begin("beanbag", false);
 
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  Serial.println();
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(F("."));
+  }
+  Serial.println();
+  Serial.print(F("Connected to "));
+  Serial.println(ssid);
+  Serial.print(F("IP address: "));
+  Serial.println(WiFi.localIP());
+
+  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
+    request->send(200, "text/plain", "Demonic Beanbag Neutralizer v0.1");
+  });
+
+  AsyncElegantOTA.begin(&webServer);    // Start ElegantOTA
+  webServer.begin();
+  Serial.println("HTTP server started");
+
   potMin = preferences.getInt("potMin", -1);
   potMax = preferences.getInt("potMax", -1);
 
   bool potCalibRequired = false;
+
   if (potMin == -1 || potMax == -1) {
     potCalibRequired = true;
   }
@@ -243,6 +260,13 @@ void setup(void) {
   }
 
   if (potCalibRequired == true) {
+    for (int x = 0; x < 3; x++) {
+      digitalWrite(ledPin, HIGH);
+      delay(500);
+      digitalWrite(ledPin, LOW);
+      delay(500);
+    }
+
     digitalWrite(ledPin, HIGH);
     calibratePot();
     digitalWrite(ledPin, LOW);
@@ -274,6 +298,14 @@ void setup(void) {
     yMaxDegree == -1
   ) {
     servoSetRequired = true;
+
+    /*digitalWrite(ledPin, HIGH);
+      setServoRango();
+      digitalWrite(ledPin, LOW);
+
+      Serial.println(F("Restarting ESP32..."));
+      delay(1000);
+      ESP.restart();*/
   }
 
   else if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
@@ -284,6 +316,14 @@ void setup(void) {
       delay(10);
     }
     servoSetRequired = true;
+
+    /*digitalWrite(ledPin, HIGH);
+      setServoRango();
+      digitalWrite(ledPin, LOW);
+
+      Serial.println(F("Restarting ESP32..."));
+      delay(1000);
+      ESP.restart();*/
   }
 
   /*
@@ -309,13 +349,20 @@ void setup(void) {
   }
 
   if (servoSetRequired == true) {
+    for (int x = 0; x < 5; x++) {
+      digitalWrite(ledPin, HIGH);
+      delay(500);
+      digitalWrite(ledPin, LOW);
+      delay(500);
+    }
+
     digitalWrite(ledPin, HIGH);
     setServoRango();
     digitalWrite(ledPin, LOW);
 
-    //Serial.println(F("Restarting ESP32..."));
-    //delay(1000);
-    //ESP.restart();
+    Serial.println(F("Restarting ESP32..."));
+    delay(1000);
+    ESP.restart();
   }
 
   ServoXControl.minDegree = xMinDegree;
@@ -341,33 +388,10 @@ void setup(void) {
 
   delay(4000);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  Serial.println();
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(F("."));
-  }
-  Serial.println();
-  Serial.print(F("Connected to "));
-  Serial.println(ssid);
-  Serial.print(F("IP address: "));
-  Serial.println(WiFi.localIP());
-
-  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
-    request->send(200, "text/plain", "Demonic Beanbag Neutralizer v0.1");
-  });
-
-  AsyncElegantOTA.begin(&webServer);    // Start ElegantOTA
-  webServer.begin();
-  Serial.println("HTTP server started");
-
   digitalWrite(ledPin, HIGH);
 }
 
-uint8_t getRandomValue(ServoControlStruct *aServoControlStruct, ServoEasing *aServoEasing) {
+uint8_t getRandomValue(ServoControlStruct * aServoControlStruct, ServoEasing * aServoEasing) {
   uint8_t tNewTargetAngle;
   do {
     tNewTargetAngle = random(aServoControlStruct->minDegree, aServoControlStruct->maxDegree);
