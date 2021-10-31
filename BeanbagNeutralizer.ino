@@ -26,12 +26,13 @@ AsyncWebServer webServer(80);
 
 const int ledPin = 2;
 const int potPin = 32;
-const int strobePin = 33;
+const int strobePin = 35;
 const int sirenPin = 23;
-const int laserPin = 25; // A0
-const int xServoPin = 19;
-const int yServoPin = 18;
+const int laserPin = 33;
+const int xServoPin = 18;
+const int yServoPin = 19;
 
+int touchVal;
 int potMin;
 int potMax;
 int xMinDegree, xMaxDegree;
@@ -63,6 +64,19 @@ WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
 IPAddress mqttServer(192, 168, 1, 6);
+
+void blinkLed(bool blinkOn) {
+  if (blinkOn == true) {
+    digitalWrite(ledPin, HIGH);
+    delay(100);
+    digitalWrite(ledPin, LOW);
+  }
+  else {
+    digitalWrite(ledPin, LOW);
+    delay(100);
+    digitalWrite(ledPin, HIGH);
+  }
+}
 
 void mqttReconnect() {
   while (!mqttClient.connected()) {
@@ -98,31 +112,50 @@ void calibratePot() {
   bool maxSet = false;
 
   Serial.println(F("Move potentiometer to MIN position then tap touch sensor to confirm."));
+  delay(7500);
   while (minSet == false) {
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-        delay(10);
-      }
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
+
+    if (touchVal < TOUCH_THRESHOLD) {
       potMin = analogRead(potPin);
+      Serial.print(F("potMin: ")); Serial.println(potMin);
       minSet = true;
+      blinkLed(false);
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+        delay(100);
+      }
+      delay(1000);
     }
+    delay(250);
   }
   preferences.putInt("potMin", potMin);
 
+  delay(5000);
+  blinkLed(false);
+
   Serial.println(F("Move potentiometer to MAX position then tap touch sensor to confirm."));
+  delay(7500);
   while (maxSet == false) {
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-        delay(10);
-      }
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
+
+    if (touchVal < TOUCH_THRESHOLD) {
       potMax = analogRead(potPin);
+      Serial.print(F("potMax: ")); Serial.println(potMax);
       maxSet = true;
+      blinkLed(false);
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+        delay(100);
+      }
+      delay(1000);
     }
+    delay(250);
   }
   preferences.putInt("potMax", potMax);
 }
 
-void setServoRango() {
+void setServoRange() {
   Serial.println(F("Calibrating servos."));
 
   bool xMinSet = false;
@@ -133,57 +166,90 @@ void setServoRango() {
   while (xMinSet == false) {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoX.easeTo(servoVal, 50);
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
+
+    if (touchVal < TOUCH_THRESHOLD) {
       xMinDegree = servoVal;
       Serial.print(F("xMinDegree: ")); Serial.println(xMinDegree);
       xMinSet = true;
+      blinkLed(false);
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-        delay(10);
+        delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
+
+  delay(5000);
+  blinkLed(false);
 
   while (xMaxSet == false) {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoX.easeTo(servoVal, 50);
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
+
+    if (touchVal < TOUCH_THRESHOLD) {
       xMaxDegree = servoVal;
       Serial.print(F("xMaxDegree: ")); Serial.println(xMaxDegree);
       xMaxSet = true;
+      blinkLed(false);
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-        delay(10);
+        delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
+
+  delay(5000);
+  blinkLed(false);
 
   while (yMinSet == false) {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoY.easeTo(servoVal, 50);
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
+
+    if (touchVal < TOUCH_THRESHOLD) {
       yMinDegree = servoVal;
       Serial.print(F("yMinDegree: ")); Serial.println(yMinDegree);
       yMinSet = true;
+      blinkLed(false);
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-        delay(10);
+        delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
+
+  delay(5000);
+  blinkLed(false);
 
   while (yMaxSet == false) {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoY.easeTo(servoVal, 50);
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
+
+    if (touchVal < TOUCH_THRESHOLD) {
       yMaxDegree = servoVal;
       Serial.print(F("yMaxDegree: ")); Serial.println(yMaxDegree);
       yMaxSet = true;
+      blinkLed(false);
       while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-        delay(10);
+        delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
 }
 
@@ -247,16 +313,20 @@ void setup(void) {
     potCalibRequired = true;
   }
 
-  delay(1000);
-
-  if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-    digitalWrite(ledPin, HIGH);
-    delay(100);
-    digitalWrite(ledPin, LOW);
-    while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      delay(10);
+  else {
+    for (int x = 0; x < 10; x++) {
+      blinkLed(true);
+      delay(100);
     }
-    potCalibRequired = true;
+    delay(1000);
+
+    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      blinkLed(true);
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+        delay(100);
+      }
+      potCalibRequired = true;
+    }
   }
 
   if (potCalibRequired == true) {
@@ -277,12 +347,10 @@ void setup(void) {
   }
 
   for (int x = 0; x < 10; x++) {
-    digitalWrite(ledPin, HIGH);
-    delay(100);
-    digitalWrite(ledPin, LOW);
+    blinkLed(true);
     delay(100);
   }
-  //delay(1000);
+  delay(1000);
 
   bool servoSetRequired = false;
 
@@ -298,32 +366,14 @@ void setup(void) {
     yMaxDegree == -1
   ) {
     servoSetRequired = true;
-
-    /*digitalWrite(ledPin, HIGH);
-      setServoRango();
-      digitalWrite(ledPin, LOW);
-
-      Serial.println(F("Restarting ESP32..."));
-      delay(1000);
-      ESP.restart();*/
   }
 
   else if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-    digitalWrite(ledPin, HIGH);
-    delay(100);
-    digitalWrite(ledPin, LOW);
+    blinkLed(true);
     while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
-      delay(10);
+      delay(100);
     }
     servoSetRequired = true;
-
-    /*digitalWrite(ledPin, HIGH);
-      setServoRango();
-      digitalWrite(ledPin, LOW);
-
-      Serial.println(F("Restarting ESP32..."));
-      delay(1000);
-      ESP.restart();*/
   }
 
   /*
@@ -357,8 +407,13 @@ void setup(void) {
     }
 
     digitalWrite(ledPin, HIGH);
-    setServoRango();
+    setServoRange();
     digitalWrite(ledPin, LOW);
+
+    preferences.putInt("xMinDegree", xMinDegree);
+    preferences.putInt("xMaxDegree", xMaxDegree);
+    preferences.putInt("yMinDegree", yMinDegree);
+    preferences.putInt("yMaxDegree", yMaxDegree);
 
     Serial.println(F("Restarting ESP32..."));
     delay(1000);
