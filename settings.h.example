@@ -1,0 +1,7 @@
+#define MQTT_OUT_TOPIC "mqttouttopic"
+#define MQTT_PUB_MESSAGE "mqttconnectmessage"
+#define MQTT_IN_TOPIC "mqttintopic"
+#define MQTT_WILL_TOPIC "mqttwilltopic"
+#define MQTT_WILL_QOS 0
+#define MQTT_WILL_RETAIN 0
+#define MQTT_WILL_MESSAGE "mqttwillmessage"

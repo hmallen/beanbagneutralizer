@@ -3,11 +3,13 @@
 #include <ESPAsyncWebServer.h>
 #include <AsyncElegantOTA.h>
 #include "credentials.h"
+#include "settings.h"
 
 #include <Arduino.h>
 #include <ServoEasing.hpp>
 #include <Preferences.h>
 #include <PubSubClient.h>
+#include <ESP32Servo.h>
 
 #define X_MICROS_0_DEG 600
 #define X_MICROS_180_DEG 2400
@@ -60,25 +62,35 @@ uint16_t strobeDuration;
 uint16_t sirenDuration;
 uint16_t laserDuration;
 
-WiFiClient wifiClient;
-PubSubClient mqttClient(wifiClient);
+uint32_t retryConnectLast = 0;
+uint16_t retryConnectInterval = 5000;
 
 IPAddress mqttServer(192, 168, 1, 6);
 
-void blinkLed(bool blinkOn) {
-  if (blinkOn == true) {
-    digitalWrite(ledPin, HIGH);
-    delay(100);
-    digitalWrite(ledPin, LOW);
+// MQTT Callback Function Declaration
+void mqttCallback(char* topic, byte* payload, uint8_t length);
+
+WiFiClient wifiClient;
+PubSubClient mqttClient(mqttServer, 1883, mqttCallback, wifiClient);
+
+void mqttCallback(char* topic, byte* payload, uint8_t length) {
+  Serial.print(F("MQTT message received ["));
+  Serial.print(topic);
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
   }
-  else {
-    digitalWrite(ledPin, LOW);
-    delay(100);
-    digitalWrite(ledPin, HIGH);
-  }
+  Serial.println();
 }
 
-void mqttReconnect() {
+boolean mqttReconnect() {
+  if (mqttClient.connect(MQTT_CLIENT, MQTT_USER, MQTT_PASS, MQTT_WILL_TOPIC, MQTT_WILL_QOS, MQTT_WILL_RETAIN, MQTT_WILL_MESSAGE)) {
+    mqttClient.publish(MQTT_OUT_TOPIC, MQTT_PUB_MESSAGE);
+    mqttClient.subscribe(MQTT_IN_TOPIC);
+  }
+  return mqttClient.connected();
+}
+
+/*void mqttReconnect() {
   while (!mqttClient.connected()) {
     Serial.print("Attempting MQTT connection...");
 
@@ -94,15 +106,19 @@ void mqttReconnect() {
       delay(5000);
     }
   }
-}
+  }*/
 
-void mqttCallback(char* topic, byte* payload, uint8_t length) {
-  Serial.print(F("MQTT message received ["));
-  Serial.print(topic);
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
+void blinkLed(bool blinkOn) {
+  if (blinkOn == true) {
+    digitalWrite(ledPin, HIGH);
+    delay(100);
+    digitalWrite(ledPin, LOW);
   }
-  Serial.println();
+  else {
+    digitalWrite(ledPin, LOW);
+    delay(100);
+    digitalWrite(ledPin, HIGH);
+  }
 }
 
 void calibratePot() {
@@ -268,7 +284,8 @@ void setup(void) {
 
   // Laser
   pinMode(laserPin, OUTPUT);
-  digitalWrite(laserPin, HIGH);
+  //digitalWrite(laserPin, HIGH);
+  analogWrite(laserPin, 0);
 
   // Servo (X-axis)
   pinMode(xServoPin, OUTPUT);
@@ -303,6 +320,15 @@ void setup(void) {
   AsyncElegantOTA.begin(&webServer);    // Start ElegantOTA
   webServer.begin();
   Serial.println("HTTP server started");
+
+  //mqttClient.setServer(mqttServer, 1883);
+  //mqttClient.setCallback(mqttCallback);
+
+  while (!mqttClient.connected()) {
+    delay(5000);
+    //bool mqttConnectResult = mqttReconnect();
+    Serial.print(F("mqttConnectResult: ")); Serial.println(mqttReconnect());
+  }
 
   potMin = preferences.getInt("potMin", -1);
   potMax = preferences.getInt("potMax", -1);
@@ -435,10 +461,14 @@ void setup(void) {
   ServoY.write(ServoYControl.minDegree);
   delay(500);
   analogWrite(laserPin, 255);
-  ServoX.easeTo(ServoXControl.maxDegree, 50);
   ServoY.easeTo(ServoYControl.maxDegree, 50);
-  ServoX.easeTo(ServoXControl.minDegree, 50);
+  //delay(2500);
+  ServoX.easeTo(ServoXControl.maxDegree, 50);
+  //delay(2500);
   ServoY.easeTo(ServoYControl.minDegree, 50);
+  //delay(2500);
+  ServoX.easeTo(ServoXControl.minDegree, 50);
+  //delay(2500);
   analogWrite(laserPin, 0);
 
   delay(4000);
@@ -455,26 +485,38 @@ uint8_t getRandomValue(ServoControlStruct * aServoControlStruct, ServoEasing * a
 }
 
 void loop(void) {
-  if (laserActive) {
-    if (!ServoX.isMoving()) {
-      delay(random(500));
-      uint8_t tNewHorizontal = getRandomValue(&ServoXControl, &ServoX);
-      uint8_t tNewVertical = getRandomValue(&ServoYControl, &ServoY);
-      int tSpeed = random(10, 90);
-
-      Serial.print(F("Move to horizontal="));
-      Serial.print(tNewHorizontal);
-      Serial.print(F(" vertical="));
-      Serial.print(tNewVertical);
-      Serial.print(F(" speed="));
-      Serial.println(tSpeed);
-      ServoX.setEaseTo(tNewHorizontal, tSpeed);
-      ServoY.setEaseTo(tNewVertical, tSpeed);
-      synchronizeAllServosAndStartInterrupt();
+  if (!mqttClient.connected()) {
+    uint32_t msNow = millis();
+    Serial.println(F("MQTT connection lost. Attempting to reconnect..."));
+    if ((msNow - retryConnectLast) > retryConnectInterval) {
+      if (mqttReconnect()) retryConnectLast = 0;
+      else retryConnectLast = msNow;
     }
   }
-
   else {
-    // DO OTHER STUFF
+    mqttClient.loop();
+
+    if (laserActive) {
+      if (!ServoX.isMoving()) {
+        delay(random(500));
+        uint8_t tNewHorizontal = getRandomValue(&ServoXControl, &ServoX);
+        uint8_t tNewVertical = getRandomValue(&ServoYControl, &ServoY);
+        int tSpeed = random(10, 90);
+
+        Serial.print(F("Move to horizontal="));
+        Serial.print(tNewHorizontal);
+        Serial.print(F(" vertical="));
+        Serial.print(tNewVertical);
+        Serial.print(F(" speed="));
+        Serial.println(tSpeed);
+        ServoX.setEaseTo(tNewHorizontal, tSpeed);
+        ServoY.setEaseTo(tNewVertical, tSpeed);
+        synchronizeAllServosAndStartInterrupt();
+      }
+    }
+
+    else {
+      // DO OTHER STUFF
+    }
   }
 }
