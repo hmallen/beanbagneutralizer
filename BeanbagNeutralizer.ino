@@ -62,6 +62,9 @@ uint16_t strobeDuration;
 uint16_t sirenDuration;
 uint16_t laserDuration;
 
+uint32_t laserMoveLast = 0;
+uint16_t laserRandomDelay = random(500);
+
 uint32_t retryConnectLast = 0;
 uint16_t retryConnectInterval = 5000;
 
@@ -459,16 +462,14 @@ void setup(void) {
   Serial.println(F("Marking border of laser area."));
   ServoX.write(ServoXControl.minDegree);
   ServoY.write(ServoYControl.minDegree);
-  delay(500);
+
+  delay(1000);
+
   analogWrite(laserPin, 255);
   ServoY.easeTo(ServoYControl.maxDegree, 50);
-  //delay(2500);
   ServoX.easeTo(ServoXControl.maxDegree, 50);
-  //delay(2500);
   ServoY.easeTo(ServoYControl.minDegree, 50);
-  //delay(2500);
   ServoX.easeTo(ServoXControl.minDegree, 50);
-  //delay(2500);
   analogWrite(laserPin, 0);
 
   delay(4000);
@@ -498,25 +499,74 @@ void loop(void) {
 
     if (laserActive) {
       if (!ServoX.isMoving()) {
-        delay(random(500));
-        uint8_t tNewHorizontal = getRandomValue(&ServoXControl, &ServoX);
-        uint8_t tNewVertical = getRandomValue(&ServoYControl, &ServoY);
-        int tSpeed = random(10, 90);
+        //delay(random(500));
+        uint16_t laserRandomElapsed = millis() - laserMoveLast;
+        Serial.print(F("laserRandomElapsed: ")); Serial.println(laserRandomElapsed);
 
-        Serial.print(F("Move to horizontal="));
-        Serial.print(tNewHorizontal);
-        Serial.print(F(" vertical="));
-        Serial.print(tNewVertical);
-        Serial.print(F(" speed="));
-        Serial.println(tSpeed);
-        ServoX.setEaseTo(tNewHorizontal, tSpeed);
-        ServoY.setEaseTo(tNewVertical, tSpeed);
-        synchronizeAllServosAndStartInterrupt();
+        if (laserRandomElapsed > laserRandomDelay) {
+
+          uint8_t tNewHorizontal = getRandomValue(&ServoXControl, &ServoX);
+          uint8_t tNewVertical = getRandomValue(&ServoYControl, &ServoY);
+          int tSpeed = random(10, 90);
+
+          Serial.print(F("Move to horizontal="));
+          Serial.print(tNewHorizontal);
+          Serial.print(F(" vertical="));
+          Serial.print(tNewVertical);
+          Serial.print(F(" speed="));
+          Serial.println(tSpeed);
+          ServoX.setEaseTo(tNewHorizontal, tSpeed);
+          ServoY.setEaseTo(tNewVertical, tSpeed);
+          synchronizeAllServosAndStartInterrupt();
+
+          laserRandomDelay = random(500);
+          Serial.print(F("laserRandomDelay: ")); Serial.println(laserRandomDelay);
+          laserMoveLast = millis();
+        }
       }
     }
+  }
 
-    else {
-      // DO OTHER STUFF
+  checkTimers();
+}
+
+void checkTimers() {
+  /*
+    bool strobeActive = false;
+    bool sirenActive = false;
+    bool laserActive = false;
+
+    uint32_t strobeStart;
+    uint32_t sirenStart;
+    uint32_t laserStart;
+
+    uint16_t strobeDuration;
+    uint16_t sirenDuration;
+    uint16_t laserDuration;
+  */
+  uint32_t msNow = millis();
+
+  if (laserActive) {
+    if ((msNow - laserStart) > laserDuration) {
+      laserActive = false;
+      analogWrite(laserPin, 0);
+      Serial.println(F("Laser disabled."));
+    }
+  }
+
+  if (sirenActive) {
+    if ((msNow - sirenStart) > sirenDuration) {
+      sirenActive = false;
+      analogWrite(sirenPin, 0);
+      Serial.println(F("Siren disabled."));
+    }
+  }
+
+  if (strobeActive) {
+    if ((msNow - strobeStart) > strobeDuration) {
+      strobeActive = false;
+      digitalWrite(strobePin, LOW);
+      Serial.println(F("Strobe disabled."));
     }
   }
 }
