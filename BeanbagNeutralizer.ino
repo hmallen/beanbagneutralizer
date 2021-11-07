@@ -79,6 +79,9 @@ PubSubClient mqttClient(mqttServer, 1883, mqttCallback, wifiClient);
 void mqttCallback(char* topic, byte* payload, uint8_t length) {
   Serial.print(F("MQTT message received ["));
   Serial.print(topic);
+  Serial.print(F("] (length="));
+  Serial.print(length);
+  Serial.print(F(") "));
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
@@ -412,13 +415,14 @@ void setup(void) {
   Serial.print(F("Attaching X servo at pin "));
   Serial.println(xServoPin);
   if (ServoX.attach(xServoPin, 90, X_MICROS_0_DEG, X_MICROS_180_DEG) == INVALID_SERVO) {
-    Serial.println(F("Error attaching servo"));
+    Serial.println(F("error attaching X servo."));
   }
+  else Serial.println(F("successfully mounted."));
 
   Serial.print(F("Attaching Y servo at pin "));
   Serial.println(yServoPin);
   if (ServoY.attach(yServoPin, 90, Y_MICROS_0_DEG, Y_MICROS_180_DEG) == INVALID_SERVO) {
-    Serial.println(F("Error attaching servo"));
+    Serial.println(F("error attaching Y servo."));
     while (true) {
       digitalWrite(ledPin, HIGH);
       delay(100);
@@ -426,6 +430,7 @@ void setup(void) {
       delay(100);
     }
   }
+  else Serial.println(F("successfully mounted."));
 
   if (servoSetRequired == true) {
     for (int x = 0; x < 5; x++) {
