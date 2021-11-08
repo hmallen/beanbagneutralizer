@@ -17,8 +17,9 @@
 #define Y_MICROS_0_DEG 600
 #define Y_MICROS_180_DEG 2400
 
-#define TOUCH_PIN T0
-#define TOUCH_THRESHOLD 5
+#ifndef MQTT_LOGGING
+#define mqttLogger Serial
+#endif
 
 Preferences preferences;
 
@@ -28,6 +29,7 @@ const char* password = WIFI_PASS;
 AsyncWebServer webServer(80);
 
 const int ledPin = 2;
+const int touchPin = 4;
 const int potPin = 32;
 const int strobePin = 35;
 const int sirenPin = 23;
@@ -35,7 +37,7 @@ const int laserPin = 33;
 const int xServoPin = 18;
 const int yServoPin = 19;
 
-int touchVal;
+bool touchVal;
 int potMin;
 int potMax;
 int xMinDegree, xMaxDegree;
@@ -76,18 +78,51 @@ void mqttCallback(char* topic, byte* payload, uint8_t length);
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(mqttServer, 1883, mqttCallback, wifiClient);
+#ifdef MQTT_LOGGING
 MqttLogger mqttLogger(mqttClient, MQTT_LOGGER_TOPIC, MqttLoggerMode::MqttAndSerialFallback);
+#endif
 
 void mqttCallback(char* topic, byte* payload, uint8_t length) {
+  // Allocate memory for copy of topic and payload
+  //char* topicBuffer = (char*)malloc(sizeof(topic) / sizeof(topic[0]));
+  //byte* payloadBuffer = (byte*)malloc(length);
+  //char payloadBuffer[length + 1];
+  char topicBuffer[length + 1];
+  strcpy(topicBuffer, topic);
+
+  // Copy topic and payload to respective buffers
+  //memcpy(topicBuffer, topic, (sizeof(topic) / sizeof(topic[0])));
+  //memmove(payloadBuffer, payload, length);
+  //payloadBuffer[length] = '\0';
+  //strcpy(payloadBuffer, payload);
+
+  mqttLogger.print(F("topicBuffer: ")); mqttLogger.println(topicBuffer);
+
   mqttLogger.print(F("MQTT message received ["));
   mqttLogger.print(topic);
   mqttLogger.print(F("] (length="));
   mqttLogger.print(length);
   mqttLogger.print(F(") "));
+  char payloadBufferRaw[length + 1];
   for (int i = 0; i < length; i++) {
     mqttLogger.print((char)payload[i]);
+    payloadBufferRaw[i] = (char)payload[i];
   }
+  payloadBufferRaw[length] = NULL;
   mqttLogger.println();
+
+  char payloadBuffer[length + 1];
+  strcpy(payloadBuffer, payloadBufferRaw);
+
+  //mqttLogger.print(F("payloadBuffer: ")); mqttLogger.println(payloadBuffer);
+
+  handleCommand(payloadBuffer);
+  //if (topicBuffer == "beanbag/command") handleCommand(payloadBuffer);
+  //else mqttLogger.println(F("Unrecognized topic."));
+
+  // Free memory
+  free(topicBuffer);
+  free(payloadBuffer);
 }
 
 boolean mqttReconnect() {
@@ -118,17 +153,17 @@ void calibratePot() {
   bool maxSet = false;
 
   mqttLogger.println(F("Move potentiometer to MIN position then tap touch sensor to confirm."));
-  delay(7500);
+  //delay(7500);
   while (minSet == false) {
-    touchVal = touchRead(TOUCH_PIN);
+    touchVal = digitalRead(touchPin);
     mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
 
-    if (touchVal < TOUCH_THRESHOLD) {
+    if (touchVal == LOW) {
       potMin = analogRead(potPin);
       mqttLogger.print(F("potMin: ")); mqttLogger.println(potMin);
       minSet = true;
       blinkLed(false);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       delay(1000);
@@ -141,17 +176,17 @@ void calibratePot() {
   blinkLed(false);
 
   mqttLogger.println(F("Move potentiometer to MAX position then tap touch sensor to confirm."));
-  delay(7500);
+  //delay(7500);
   while (maxSet == false) {
-    touchVal = touchRead(TOUCH_PIN);
+    touchVal = digitalRead(touchPin);
     mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
 
-    if (touchVal < TOUCH_THRESHOLD) {
+    if (touchVal == LOW) {
       potMax = analogRead(potPin);
       mqttLogger.print(F("potMax: ")); mqttLogger.println(potMax);
       maxSet = true;
       blinkLed(false);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       delay(1000);
@@ -173,15 +208,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoX.easeTo(servoVal, 50);
 
-    touchVal = touchRead(TOUCH_PIN);
+    touchVal = digitalRead(touchPin);
     mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
 
-    if (touchVal < TOUCH_THRESHOLD) {
+    if (touchVal == LOW) {
       xMinDegree = servoVal;
       mqttLogger.print(F("xMinDegree: ")); mqttLogger.println(xMinDegree);
       xMinSet = true;
       blinkLed(false);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       delay(1000);
@@ -196,15 +231,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoX.easeTo(servoVal, 50);
 
-    touchVal = touchRead(TOUCH_PIN);
+    touchVal = digitalRead(touchPin);
     mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
 
-    if (touchVal < TOUCH_THRESHOLD) {
+    if (touchVal == LOW) {
       xMaxDegree = servoVal;
       mqttLogger.print(F("xMaxDegree: ")); mqttLogger.println(xMaxDegree);
       xMaxSet = true;
       blinkLed(false);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       delay(1000);
@@ -219,15 +254,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoY.easeTo(servoVal, 50);
 
-    touchVal = touchRead(TOUCH_PIN);
+    touchVal = digitalRead(touchPin);
     mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
 
-    if (touchVal < TOUCH_THRESHOLD) {
+    if (touchVal == LOW) {
       yMinDegree = servoVal;
       mqttLogger.print(F("yMinDegree: ")); mqttLogger.println(yMinDegree);
       yMinSet = true;
       blinkLed(false);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       delay(1000);
@@ -242,15 +277,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoY.easeTo(servoVal, 50);
 
-    touchVal = touchRead(TOUCH_PIN);
+    touchVal = digitalRead(touchPin);
     mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
 
-    if (touchVal < TOUCH_THRESHOLD) {
+    if (touchVal == LOW) {
       yMaxDegree = servoVal;
       mqttLogger.print(F("yMaxDegree: ")); mqttLogger.println(yMaxDegree);
       yMaxSet = true;
       blinkLed(false);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       delay(1000);
@@ -282,6 +317,9 @@ void setup(void) {
 
   // Servo (Y-axis)
   pinMode(yServoPin, OUTPUT);
+
+  // Button
+  pinMode(touchPin, INPUT_PULLUP);
 
   Serial.begin(115200);
   mqttLogger.println();
@@ -336,9 +374,9 @@ void setup(void) {
     }
     delay(1000);
 
-    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+    if (digitalRead(touchPin) == LOW) {
       blinkLed(true);
-      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+      while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
       potCalibRequired = true;
@@ -384,9 +422,9 @@ void setup(void) {
     servoSetRequired = true;
   }
 
-  else if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+  else if (digitalRead(touchPin) == LOW) {
     blinkLed(true);
-    while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
+    while (digitalRead(touchPin) == LOW) {
       delay(100);
     }
     servoSetRequired = true;
@@ -452,16 +490,23 @@ void setup(void) {
   ServoX.write(ServoXControl.minDegree);
   ServoY.write(ServoYControl.minDegree);
 
+  analogWrite(laserPin, 255);
+
   delay(1000);
 
-  analogWrite(laserPin, 255);
   ServoY.easeTo(ServoYControl.maxDegree, 50);
+  delay(500);
   ServoX.easeTo(ServoXControl.maxDegree, 50);
+  delay(500);
   ServoY.easeTo(ServoYControl.minDegree, 50);
+  delay(500);
   ServoX.easeTo(ServoXControl.minDegree, 50);
+
+  delay(1000);
+
   analogWrite(laserPin, 0);
 
-  delay(4000);
+  //delay(4000);
 
   mqttLogger.println(F("Setup complete."));
   digitalWrite(ledPin, HIGH);
@@ -559,4 +604,8 @@ void checkTimers() {
       mqttLogger.println(F("Strobe disabled."));
     }
   }
+}
+
+void handleCommand(char* command) {
+  mqttLogger.print(F("command: ")); mqttLogger.println(command);
 }
