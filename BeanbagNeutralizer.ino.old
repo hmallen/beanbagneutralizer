@@ -9,7 +9,6 @@
 #include <ServoEasing.hpp>
 #include <Preferences.h>
 #include <PubSubClient.h>
-#include <MqttLogger.h>
 #include <ESP32Servo.h>
 
 #define X_MICROS_0_DEG 600
@@ -17,9 +16,8 @@
 #define Y_MICROS_0_DEG 600
 #define Y_MICROS_180_DEG 2400
 
-#ifndef MQTT_LOGGING
-#define mqttLogger Serial
-#endif
+#define TOUCH_PIN T0
+#define TOUCH_THRESHOLD 5
 
 Preferences preferences;
 
@@ -29,7 +27,6 @@ const char* password = WIFI_PASS;
 AsyncWebServer webServer(80);
 
 const int ledPin = 2;
-const int touchPin = 4;
 const int potPin = 32;
 const int strobePin = 35;
 const int sirenPin = 23;
@@ -37,7 +34,7 @@ const int laserPin = 33;
 const int xServoPin = 18;
 const int yServoPin = 19;
 
-bool touchVal;
+int touchVal;
 int potMin;
 int potMax;
 int xMinDegree, xMaxDegree;
@@ -78,51 +75,17 @@ void mqttCallback(char* topic, byte* payload, uint8_t length);
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(mqttServer, 1883, mqttCallback, wifiClient);
-#ifdef MQTT_LOGGING
-MqttLogger mqttLogger(mqttClient, MQTT_LOGGER_TOPIC, MqttLoggerMode::MqttAndSerialFallback);
-#endif
 
 void mqttCallback(char* topic, byte* payload, uint8_t length) {
-  // Allocate memory for copy of topic and payload
-  //char* topicBuffer = (char*)malloc(sizeof(topic) / sizeof(topic[0]));
-  //byte* payloadBuffer = (byte*)malloc(length);
-  //char payloadBuffer[length + 1];
-  char topicBuffer[length + 1];
-  strcpy(topicBuffer, topic);
-
-  // Copy topic and payload to respective buffers
-  //memcpy(topicBuffer, topic, (sizeof(topic) / sizeof(topic[0])));
-  //memmove(payloadBuffer, payload, length);
-  //payloadBuffer[length] = '\0';
-  //strcpy(payloadBuffer, payload);
-
-  mqttLogger.print(F("topicBuffer: ")); mqttLogger.println(topicBuffer);
-
-  mqttLogger.print(F("MQTT message received ["));
-  mqttLogger.print(topic);
-  mqttLogger.print(F("] (length="));
-  mqttLogger.print(length);
-  mqttLogger.print(F(") "));
-  char payloadBufferRaw[length + 1];
+  Serial.print(F("MQTT message received ["));
+  Serial.print(topic);
+  Serial.print(F("] (length="));
+  Serial.print(length);
+  Serial.print(F(") "));
   for (int i = 0; i < length; i++) {
-    mqttLogger.print((char)payload[i]);
-    payloadBufferRaw[i] = (char)payload[i];
+    Serial.print((char)payload[i]);
   }
-  payloadBufferRaw[length] = NULL;
-  mqttLogger.println();
-
-  char payloadBuffer[length + 1];
-  strcpy(payloadBuffer, payloadBufferRaw);
-
-  //mqttLogger.print(F("payloadBuffer: ")); mqttLogger.println(payloadBuffer);
-
-  handleCommand(payloadBuffer);
-  //if (topicBuffer == "beanbag/command") handleCommand(payloadBuffer);
-  //else mqttLogger.println(F("Unrecognized topic."));
-
-  // Free memory
-  free(topicBuffer);
-  free(payloadBuffer);
+  Serial.println();
 }
 
 boolean mqttReconnect() {
@@ -132,6 +95,24 @@ boolean mqttReconnect() {
   }
   return mqttClient.connected();
 }
+
+/*void mqttReconnect() {
+  while (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection...");
+
+    if (mqttClient.connect("arduinoClient")) {
+      Serial.println("connected");
+      mqttClient.publish("outTopic", "hello world");
+      mqttClient.subscribe("inTopic");
+    }
+    else {
+      mqttClient.print("failed, rc=");
+      mqttClient.print(mqttClient.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+  }*/
 
 void blinkLed(bool blinkOn) {
   if (blinkOn == true) {
@@ -147,23 +128,23 @@ void blinkLed(bool blinkOn) {
 }
 
 void calibratePot() {
-  mqttLogger.println(F("Calibrating potentiometer."));
+  Serial.println(F("Calibrating potentiometer."));
 
   bool minSet = false;
   bool maxSet = false;
 
-  mqttLogger.println(F("Move potentiometer to MIN position then tap touch sensor to confirm."));
-  //delay(7500);
+  Serial.println(F("Move potentiometer to MIN position then tap touch sensor to confirm."));
+  delay(7500);
   while (minSet == false) {
-    touchVal = digitalRead(touchPin);
-    mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
 
-    if (touchVal == LOW) {
+    if (touchVal < TOUCH_THRESHOLD) {
       potMin = analogRead(potPin);
-      mqttLogger.print(F("potMin: ")); mqttLogger.println(potMin);
+      Serial.print(F("potMin: ")); Serial.println(potMin);
       minSet = true;
       blinkLed(false);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       delay(1000);
@@ -175,18 +156,18 @@ void calibratePot() {
   delay(5000);
   blinkLed(false);
 
-  mqttLogger.println(F("Move potentiometer to MAX position then tap touch sensor to confirm."));
-  //delay(7500);
+  Serial.println(F("Move potentiometer to MAX position then tap touch sensor to confirm."));
+  delay(7500);
   while (maxSet == false) {
-    touchVal = digitalRead(touchPin);
-    mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
 
-    if (touchVal == LOW) {
+    if (touchVal < TOUCH_THRESHOLD) {
       potMax = analogRead(potPin);
-      mqttLogger.print(F("potMax: ")); mqttLogger.println(potMax);
+      Serial.print(F("potMax: ")); Serial.println(potMax);
       maxSet = true;
       blinkLed(false);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       delay(1000);
@@ -197,7 +178,7 @@ void calibratePot() {
 }
 
 void setServoRange() {
-  mqttLogger.println(F("Calibrating servos."));
+  Serial.println(F("Calibrating servos."));
 
   bool xMinSet = false;
   bool xMaxSet = false;
@@ -208,15 +189,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoX.easeTo(servoVal, 50);
 
-    touchVal = digitalRead(touchPin);
-    mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
 
-    if (touchVal == LOW) {
+    if (touchVal < TOUCH_THRESHOLD) {
       xMinDegree = servoVal;
-      mqttLogger.print(F("xMinDegree: ")); mqttLogger.println(xMinDegree);
+      Serial.print(F("xMinDegree: ")); Serial.println(xMinDegree);
       xMinSet = true;
       blinkLed(false);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       delay(1000);
@@ -231,15 +212,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoX.easeTo(servoVal, 50);
 
-    touchVal = digitalRead(touchPin);
-    mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
 
-    if (touchVal == LOW) {
+    if (touchVal < TOUCH_THRESHOLD) {
       xMaxDegree = servoVal;
-      mqttLogger.print(F("xMaxDegree: ")); mqttLogger.println(xMaxDegree);
+      Serial.print(F("xMaxDegree: ")); Serial.println(xMaxDegree);
       xMaxSet = true;
       blinkLed(false);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       delay(1000);
@@ -254,15 +235,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoY.easeTo(servoVal, 50);
 
-    touchVal = digitalRead(touchPin);
-    mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
 
-    if (touchVal == LOW) {
+    if (touchVal < TOUCH_THRESHOLD) {
       yMinDegree = servoVal;
-      mqttLogger.print(F("yMinDegree: ")); mqttLogger.println(yMinDegree);
+      Serial.print(F("yMinDegree: ")); Serial.println(yMinDegree);
       yMinSet = true;
       blinkLed(false);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       delay(1000);
@@ -277,15 +258,15 @@ void setServoRange() {
     int servoVal = map(analogRead(potPin), potMin, potMax, 0, 180);
     ServoY.easeTo(servoVal, 50);
 
-    touchVal = digitalRead(touchPin);
-    mqttLogger.print(F("touchVal: ")); mqttLogger.println(touchVal);
+    touchVal = touchRead(TOUCH_PIN);
+    Serial.print(F("touchVal: ")); Serial.println(touchVal);
 
-    if (touchVal == LOW) {
+    if (touchVal < TOUCH_THRESHOLD) {
       yMaxDegree = servoVal;
-      mqttLogger.print(F("yMaxDegree: ")); mqttLogger.println(yMaxDegree);
+      Serial.print(F("yMaxDegree: ")); Serial.println(yMaxDegree);
       yMaxSet = true;
       blinkLed(false);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       delay(1000);
@@ -318,28 +299,25 @@ void setup(void) {
   // Servo (Y-axis)
   pinMode(yServoPin, OUTPUT);
 
-  // Button
-  pinMode(touchPin, INPUT_PULLUP);
-
   Serial.begin(115200);
-  mqttLogger.println();
+  Serial.println();
 
   preferences.begin("beanbag", false);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  mqttLogger.println();
+  Serial.println();
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    mqttLogger.print(F("."));
+    Serial.print(F("."));
   }
-  mqttLogger.println();
-  mqttLogger.print(F("Connected to "));
-  mqttLogger.println(ssid);
-  mqttLogger.print(F("IP address: "));
-  mqttLogger.println(WiFi.localIP());
+  Serial.println();
+  Serial.print(F("Connected to "));
+  Serial.println(ssid);
+  Serial.print(F("IP address: "));
+  Serial.println(WiFi.localIP());
 
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
     request->send(200, "text/plain", "Demonic Beanbag Neutralizer v0.1");
@@ -347,7 +325,7 @@ void setup(void) {
 
   AsyncElegantOTA.begin(&webServer);    // Start ElegantOTA
   webServer.begin();
-  mqttLogger.println("HTTP server started");
+  Serial.println("HTTP server started");
 
   //mqttClient.setServer(mqttServer, 1883);
   //mqttClient.setCallback(mqttCallback);
@@ -355,7 +333,7 @@ void setup(void) {
   while (!mqttClient.connected()) {
     delay(5000);
     //bool mqttConnectResult = mqttReconnect();
-    mqttLogger.print(F("mqttConnectResult: ")); mqttLogger.println(mqttReconnect());
+    Serial.print(F("mqttConnectResult: ")); Serial.println(mqttReconnect());
   }
 
   potMin = preferences.getInt("potMin", -1);
@@ -374,9 +352,9 @@ void setup(void) {
     }
     delay(1000);
 
-    if (digitalRead(touchPin) == LOW) {
+    if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
       blinkLed(true);
-      while (digitalRead(touchPin) == LOW) {
+      while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
         delay(100);
       }
       potCalibRequired = true;
@@ -395,7 +373,7 @@ void setup(void) {
     calibratePot();
     digitalWrite(ledPin, LOW);
 
-    mqttLogger.println(F("Restarting ESP32..."));
+    Serial.println(F("Restarting ESP32..."));
     delay(1000);
     ESP.restart();
   }
@@ -422,9 +400,9 @@ void setup(void) {
     servoSetRequired = true;
   }
 
-  else if (digitalRead(touchPin) == LOW) {
+  else if (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
     blinkLed(true);
-    while (digitalRead(touchPin) == LOW) {
+    while (touchRead(TOUCH_PIN) < TOUCH_THRESHOLD) {
       delay(100);
     }
     servoSetRequired = true;
@@ -434,17 +412,17 @@ void setup(void) {
       Servo attach parameters:
       attach(int aPin, int aInitialDegree, int aMicrosecondsForServo0Degree, int aMicrosecondsForServo180Degree)
   */
-  mqttLogger.print(F("Attaching X servo at pin "));
-  mqttLogger.println(xServoPin);
+  Serial.print(F("Attaching X servo at pin "));
+  Serial.println(xServoPin);
   if (ServoX.attach(xServoPin, 90, X_MICROS_0_DEG, X_MICROS_180_DEG) == INVALID_SERVO) {
-    mqttLogger.println(F("error attaching X servo."));
+    Serial.println(F("error attaching X servo."));
   }
-  else mqttLogger.println(F("successfully mounted."));
+  else Serial.println(F("successfully mounted."));
 
-  mqttLogger.print(F("Attaching Y servo at pin "));
-  mqttLogger.println(yServoPin);
+  Serial.print(F("Attaching Y servo at pin "));
+  Serial.println(yServoPin);
   if (ServoY.attach(yServoPin, 90, Y_MICROS_0_DEG, Y_MICROS_180_DEG) == INVALID_SERVO) {
-    mqttLogger.println(F("error attaching Y servo."));
+    Serial.println(F("error attaching Y servo."));
     while (true) {
       digitalWrite(ledPin, HIGH);
       delay(100);
@@ -452,7 +430,7 @@ void setup(void) {
       delay(100);
     }
   }
-  else mqttLogger.println(F("successfully mounted."));
+  else Serial.println(F("successfully mounted."));
 
   if (servoSetRequired == true) {
     for (int x = 0; x < 5; x++) {
@@ -471,7 +449,7 @@ void setup(void) {
     preferences.putInt("yMinDegree", yMinDegree);
     preferences.putInt("yMaxDegree", yMaxDegree);
 
-    mqttLogger.println(F("Restarting ESP32..."));
+    Serial.println(F("Restarting ESP32..."));
     delay(1000);
     ESP.restart();
   }
@@ -481,34 +459,26 @@ void setup(void) {
   ServoYControl.minDegree = yMinDegree;
   ServoYControl.maxDegree = yMaxDegree;
 
-  mqttLogger.print(F("ServoXControl.minDegree: ")); mqttLogger.println(ServoXControl.minDegree);
-  mqttLogger.print(F("ServoXControl.maxDegree: ")); mqttLogger.println(ServoXControl.maxDegree);
-  mqttLogger.print(F("ServoYControl.minDegree: ")); mqttLogger.println(ServoYControl.minDegree);
-  mqttLogger.print(F("ServoYControl.maxDegree: ")); mqttLogger.println(ServoYControl.maxDegree);
+  Serial.print(F("ServoXControl.minDegree: ")); Serial.println(ServoXControl.minDegree);
+  Serial.print(F("ServoXControl.maxDegree: ")); Serial.println(ServoXControl.maxDegree);
+  Serial.print(F("ServoYControl.minDegree: ")); Serial.println(ServoYControl.minDegree);
+  Serial.print(F("ServoYControl.maxDegree: ")); Serial.println(ServoYControl.maxDegree);
 
-  mqttLogger.println(F("Marking border of laser area."));
+  Serial.println(F("Marking border of laser area."));
   ServoX.write(ServoXControl.minDegree);
   ServoY.write(ServoYControl.minDegree);
 
+  delay(1000);
+
   analogWrite(laserPin, 255);
-
-  delay(1000);
-
   ServoY.easeTo(ServoYControl.maxDegree, 50);
-  delay(500);
   ServoX.easeTo(ServoXControl.maxDegree, 50);
-  delay(500);
   ServoY.easeTo(ServoYControl.minDegree, 50);
-  delay(500);
   ServoX.easeTo(ServoXControl.minDegree, 50);
-
-  delay(1000);
-
   analogWrite(laserPin, 0);
 
-  //delay(4000);
+  delay(4000);
 
-  mqttLogger.println(F("Setup complete."));
   digitalWrite(ledPin, HIGH);
 }
 
@@ -523,7 +493,7 @@ uint8_t getRandomValue(ServoControlStruct * aServoControlStruct, ServoEasing * a
 void loop(void) {
   if (!mqttClient.connected()) {
     uint32_t msNow = millis();
-    mqttLogger.println(F("MQTT connection lost. Attempting to reconnect..."));
+    Serial.println(F("MQTT connection lost. Attempting to reconnect..."));
     if ((msNow - retryConnectLast) > retryConnectInterval) {
       if (mqttReconnect()) retryConnectLast = 0;
       else retryConnectLast = msNow;
@@ -536,7 +506,7 @@ void loop(void) {
       if (!ServoX.isMoving()) {
         //delay(random(500));
         uint16_t laserRandomElapsed = millis() - laserMoveLast;
-        mqttLogger.print(F("laserRandomElapsed: ")); mqttLogger.println(laserRandomElapsed);
+        Serial.print(F("laserRandomElapsed: ")); Serial.println(laserRandomElapsed);
 
         if (laserRandomElapsed > laserRandomDelay) {
 
@@ -544,18 +514,18 @@ void loop(void) {
           uint8_t tNewVertical = getRandomValue(&ServoYControl, &ServoY);
           int tSpeed = random(10, 90);
 
-          mqttLogger.print(F("Move to horizontal="));
-          mqttLogger.print(tNewHorizontal);
-          mqttLogger.print(F(" vertical="));
-          mqttLogger.print(tNewVertical);
-          mqttLogger.print(F(" speed="));
-          mqttLogger.println(tSpeed);
+          Serial.print(F("Move to horizontal="));
+          Serial.print(tNewHorizontal);
+          Serial.print(F(" vertical="));
+          Serial.print(tNewVertical);
+          Serial.print(F(" speed="));
+          Serial.println(tSpeed);
           ServoX.setEaseTo(tNewHorizontal, tSpeed);
           ServoY.setEaseTo(tNewVertical, tSpeed);
           synchronizeAllServosAndStartInterrupt();
 
           laserRandomDelay = random(500);
-          mqttLogger.print(F("laserRandomDelay: ")); mqttLogger.println(laserRandomDelay);
+          Serial.print(F("laserRandomDelay: ")); Serial.println(laserRandomDelay);
           laserMoveLast = millis();
         }
       }
@@ -585,7 +555,7 @@ void checkTimers() {
     if ((msNow - laserStart) > laserDuration) {
       laserActive = false;
       analogWrite(laserPin, 0);
-      mqttLogger.println(F("Laser disabled."));
+      Serial.println(F("Laser disabled."));
     }
   }
 
@@ -593,7 +563,7 @@ void checkTimers() {
     if ((msNow - sirenStart) > sirenDuration) {
       sirenActive = false;
       analogWrite(sirenPin, 0);
-      mqttLogger.println(F("Siren disabled."));
+      Serial.println(F("Siren disabled."));
     }
   }
 
@@ -601,11 +571,7 @@ void checkTimers() {
     if ((msNow - strobeStart) > strobeDuration) {
       strobeActive = false;
       digitalWrite(strobePin, LOW);
-      mqttLogger.println(F("Strobe disabled."));
+      Serial.println(F("Strobe disabled."));
     }
   }
-}
-
-void handleCommand(char* command) {
-  mqttLogger.print(F("command: ")); mqttLogger.println(command);
 }
