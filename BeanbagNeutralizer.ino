@@ -83,46 +83,21 @@ MqttLogger mqttLogger(mqttClient, MQTT_LOGGER_TOPIC, MqttLoggerMode::MqttAndSeri
 #endif
 
 void mqttCallback(char* topic, byte* payload, uint8_t length) {
-  // Allocate memory for copy of topic and payload
-  //char* topicBuffer = (char*)malloc(sizeof(topic) / sizeof(topic[0]));
-  //byte* payloadBuffer = (byte*)malloc(length);
-  //char payloadBuffer[length + 1];
-  char topicBuffer[length + 1];
-  strcpy(topicBuffer, topic);
-
-  // Copy topic and payload to respective buffers
-  //memcpy(topicBuffer, topic, (sizeof(topic) / sizeof(topic[0])));
-  //memmove(payloadBuffer, payload, length);
-  //payloadBuffer[length] = '\0';
-  //strcpy(payloadBuffer, payload);
-
-  mqttLogger.print(F("topicBuffer: ")); mqttLogger.println(topicBuffer);
-
-  mqttLogger.print(F("MQTT message received ["));
+  mqttLogger.print("Message arrived [");
   mqttLogger.print(topic);
-  mqttLogger.print(F("] (length="));
-  mqttLogger.print(length);
-  mqttLogger.print(F(") "));
-  char payloadBufferRaw[length + 1];
+  mqttLogger.print("] ");
   for (int i = 0; i < length; i++) {
     mqttLogger.print((char)payload[i]);
-    payloadBufferRaw[i] = (char)payload[i];
   }
-  payloadBufferRaw[length] = NULL;
   mqttLogger.println();
 
-  char payloadBuffer[length + 1];
-  strcpy(payloadBuffer, payloadBufferRaw);
-
-  //mqttLogger.print(F("payloadBuffer: ")); mqttLogger.println(payloadBuffer);
-
-  handleCommand(payloadBuffer);
-  //if (topicBuffer == "beanbag/command") handleCommand(payloadBuffer);
-  //else mqttLogger.println(F("Unrecognized topic."));
-
-  // Free memory
-  free(topicBuffer);
-  free(payloadBuffer);
+  String commandString = String(topic);
+  mqttLogger.print(F("commandString: ")); mqttLogger.println(commandString);
+  if (commandString.indexOf('!') >= 0) {
+    commandString.remove(0, (commandString.indexOf('!') + 1));
+    handleCommand(commandString);
+  }
+  else mqttLogger.println(F("MQTT data received is not a command."));
 }
 
 boolean mqttReconnect() {
@@ -197,6 +172,8 @@ void calibratePot() {
 }
 
 void setServoRange() {
+  analogWrite(laserPin, 255);
+
   mqttLogger.println(F("Calibrating servos."));
 
   bool xMinSet = false;
@@ -292,6 +269,8 @@ void setServoRange() {
     }
     delay(250);
   }
+
+  analogWrite(laserPin, 0);
 }
 
 void setup(void) {
@@ -501,8 +480,7 @@ void setup(void) {
   ServoY.easeTo(ServoYControl.minDegree, 50);
   delay(500);
   ServoX.easeTo(ServoXControl.minDegree, 50);
-
-  delay(1000);
+  delay(500);
 
   analogWrite(laserPin, 0);
 
@@ -562,7 +540,7 @@ void loop(void) {
     }
   }
 
-  checkTimers();
+  checkTimers(); analogWrite(laserPin, 0);
 }
 
 void checkTimers() {
@@ -583,29 +561,75 @@ void checkTimers() {
 
   if (laserActive) {
     if ((msNow - laserStart) > laserDuration) {
-      laserActive = false;
       analogWrite(laserPin, 0);
+      laserActive = false;
       mqttLogger.println(F("Laser disabled."));
     }
   }
 
   if (sirenActive) {
     if ((msNow - sirenStart) > sirenDuration) {
-      sirenActive = false;
       analogWrite(sirenPin, 0);
+      sirenActive = false;
       mqttLogger.println(F("Siren disabled."));
     }
   }
 
   if (strobeActive) {
     if ((msNow - strobeStart) > strobeDuration) {
-      strobeActive = false;
       digitalWrite(strobePin, LOW);
+      strobeActive = false;
       mqttLogger.println(F("Strobe disabled."));
     }
   }
 }
 
-void handleCommand(char* command) {
-  mqttLogger.print(F("command: ")); mqttLogger.println(command);
+void handleCommand(String command) {
+  String item = command.substring(0, command.indexOf('@'));
+  String action = command.substring(command.indexOf('@') + 1, command.indexOf('$'));
+  uint32_t duration = command.substring(command.indexOf('$')).toInt() * 1000;
+
+  if (item.equalsIgnoreCase("laser")) {
+    if (action.equalsIgnoreCase("on") || action.equalsIgnoreCase("1")) {
+      analogWrite(laserPin, 255);
+      laserActive = true;
+      laserStart = millis();
+      laserDuration = duration;
+    }
+    else if (action.equalsIgnoreCase("off") || action.equalsIgnoreCase("0")) {
+      analogWrite(laserPin, 0);
+      laserActive = false;
+    }
+    else mqttLogger.println(F("Unrecognized action in handleCommand()."));
+  }
+
+  else if (item.equalsIgnoreCase("strobe")) {
+    if (action.equalsIgnoreCase("on") || action.equalsIgnoreCase("1")) {
+      digitalWrite(strobePin, HIGH);
+      strobeActive = true;
+      strobeStart = millis();
+      strobeDuration = duration;
+    }
+    else if (action.equalsIgnoreCase("off") || action.equalsIgnoreCase("0")) {
+      digitalWrite(strobePin, LOW);
+      strobeActive = false;
+    }
+    else mqttLogger.println(F("Unrecognized action in handleCommand()."));
+  }
+
+  else if (item.equalsIgnoreCase("siren")) {
+    if (action.equalsIgnoreCase("on") || action.equalsIgnoreCase("1")) {
+      analogWrite(sirenPin, 255);
+      sirenActive = true;
+      sirenStart = millis();
+      sirenDuration = duration;
+    }
+    else if (action.equalsIgnoreCase("off") || action.equalsIgnoreCase("0")) {
+      analogWrite(sirenPin, 0);
+      sirenActive = false;
+    }
+    else mqttLogger.println(F("Unrecognized action in handleCommand()."));
+  }
+
+  else mqttLogger.println(F("Unrecognized item in handleCommand()."));
 }
