@@ -87,35 +87,35 @@ void mqttCallback(char* topic, byte* payload, uint8_t length) {
   strcpy(topicMsg, topic);
 
   mqttLogger.print("Message arrived [");
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.print(topic);
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.print("] ");
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   for (int i = 0; i < length; i++) {
     mqttLogger.print((char)payload[i]);
   }
-  delay(MQTT_LOGGER_DELAY);
+  delay(500);
   mqttLogger.println();
 
   String commandString = String(topicMsg);
   mqttLogger.print(F("[initial] commandString: "));
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.print(commandString);
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.println();
   if (commandString.indexOf('!') >= 0) {
     commandString.remove(0, (commandString.lastIndexOf('/') + 1));
     mqttLogger.print(F("[remove] commandString: "));
-    delay(MQTT_LOGGER_DELAY);
+    //delay(500);
     mqttLogger.print(commandString);
-    delay(MQTT_LOGGER_DELAY);
+    //delay(500);
     mqttLogger.println();
     handleCommand(commandString);
   }
   else {
     mqttLogger.print(F("MQTT data received is not a command."));
-    delay(MQTT_LOGGER_DELAY);
+    //delay(500);
     mqttLogger.println();
   }
 }
@@ -161,11 +161,13 @@ void calibratePot() {
       while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
   preferences.putInt("potMin", potMin);
 
+  delay(5000);
   blinkLed(false);
 
   mqttLogger.println(F("Move potentiometer to MAX position then tap touch sensor to confirm."));
@@ -182,8 +184,9 @@ void calibratePot() {
       while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
   preferences.putInt("potMax", potMax);
 }
@@ -213,10 +216,12 @@ void setServoRange() {
       while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
 
+  delay(5000);
   blinkLed(false);
 
   while (xMaxSet == false) {
@@ -234,10 +239,12 @@ void setServoRange() {
       while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
 
+  delay(5000);
   blinkLed(false);
 
   while (yMinSet == false) {
@@ -255,10 +262,12 @@ void setServoRange() {
       while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
 
+  delay(5000);
   blinkLed(false);
 
   while (yMaxSet == false) {
@@ -276,8 +285,9 @@ void setServoRange() {
       while (digitalRead(touchPin) == LOW) {
         delay(100);
       }
+      delay(1000);
     }
-    delay(100);
+    delay(250);
   }
 
   analogWrite(laserPin, 0);
@@ -424,20 +434,16 @@ void setup(void) {
       attach(int aPin, int aInitialDegree, int aMicrosecondsForServo0Degree, int aMicrosecondsForServo180Degree)
   */
   mqttLogger.print(F("Attaching X servo at pin "));
-  delay(MQTT_LOGGER_DELAY);
   mqttLogger.println(xServoPin);
   if (ServoX.attach(xServoPin, 90, X_MICROS_0_DEG, X_MICROS_180_DEG) == INVALID_SERVO) {
     mqttLogger.println(F("error attaching X servo."));
-    delay(MQTT_LOGGER_DELAY);
   }
   else mqttLogger.println(F("successfully mounted."));
 
   mqttLogger.print(F("Attaching Y servo at pin "));
-  delay(MQTT_LOGGER_DELAY);
   mqttLogger.println(yServoPin);
   if (ServoY.attach(yServoPin, 90, Y_MICROS_0_DEG, Y_MICROS_180_DEG) == INVALID_SERVO) {
     mqttLogger.println(F("error attaching Y servo."));
-    delay(MQTT_LOGGER_DELAY);
     while (true) {
       digitalWrite(ledPin, HIGH);
       delay(100);
@@ -504,25 +510,6 @@ void setup(void) {
   digitalWrite(ledPin, HIGH);
 }
 
-void loop(void) {
-  if (!mqttClient.connected()) {
-    uint32_t msNow = millis();
-    mqttLogger.println(F("MQTT connection lost. Attempting to reconnect..."));
-    delay(MQTT_LOGGER_DELAY);
-    if ((msNow - retryConnectLast) > retryConnectInterval) {
-      if (mqttReconnect()) retryConnectLast = 0;
-      else retryConnectLast = msNow;
-    }
-  }
-  else {
-    mqttClient.loop();
-
-    if (laserActive) runLaser(laserDuration);
-  }
-
-  //checkTimers();
-}
-
 uint8_t getRandomValue(ServoControlStruct * aServoControlStruct, ServoEasing * aServoEasing) {
   uint8_t tNewTargetAngle;
   do {
@@ -531,21 +518,49 @@ uint8_t getRandomValue(ServoControlStruct * aServoControlStruct, ServoEasing * a
   return tNewTargetAngle;
 }
 
-void runLaser(uint16_t duration) {
-  for (uint32_t startTime = millis(); (millis() - startTime) < duration; ) {
-    if (!ServoX.isMoving()) {
+void loop(void) {
+  if (!mqttClient.connected()) {
+    uint32_t msNow = millis();
+    mqttLogger.println(F("MQTT connection lost. Attempting to reconnect..."));
+    if ((msNow - retryConnectLast) > retryConnectInterval) {
+      if (mqttReconnect()) retryConnectLast = 0;
+      else retryConnectLast = msNow;
+    }
+  }
+  else {
+    mqttClient.loop();
+
+    if (laserActive) {
+      if (!ServoX.isMoving()) {
         delay(random(500));
+        //uint16_t laserRandomElapsed = millis() - laserMoveLast;
+        //mqttLogger.print(F("laserRandomElapsed: ")); mqttLogger.println(laserRandomElapsed);
+
+        //if (laserRandomElapsed > laserRandomDelay) {
 
         uint8_t tNewHorizontal = getRandomValue(&ServoXControl, &ServoX);
         uint8_t tNewVertical = getRandomValue(&ServoYControl, &ServoY);
         int tSpeed = random(10, 90);
 
+        /*mqttLogger.print(F("Move to horizontal="));
+          mqttLogger.print(tNewHorizontal);
+          mqttLogger.print(F(" vertical="));
+          mqttLogger.print(tNewVertical);
+          mqttLogger.print(F(" speed="));
+          mqttLogger.println(tSpeed);*/
         ServoX.setEaseTo(tNewHorizontal, tSpeed);
         ServoY.setEaseTo(tNewVertical, tSpeed);
-
         synchronizeAllServosAndStartInterrupt();
+
+        //laserRandomDelay = random(500);
+        //mqttLogger.print(F("laserRandomDelay: ")); mqttLogger.println(laserRandomDelay);
+        //laserMoveLast = millis();
+        //}
+      }
     }
   }
+
+  checkTimers();
 }
 
 void checkTimers() {
@@ -569,7 +584,7 @@ void checkTimers() {
       analogWrite(laserPin, 0);
       laserActive = false;
       mqttLogger.println(F("Laser disabled."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
   }
 
@@ -578,7 +593,7 @@ void checkTimers() {
       analogWrite(sirenPin, 0);
       sirenActive = false;
       mqttLogger.println(F("Siren disabled."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
   }
 
@@ -587,7 +602,7 @@ void checkTimers() {
       digitalWrite(strobePin, LOW);
       strobeActive = false;
       mqttLogger.println(F("Strobe disabled."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
   }
 }
@@ -595,30 +610,24 @@ void checkTimers() {
 void handleCommand(String command) {
   String item = command.substring((command.indexOf('!') + 1), command.indexOf('@'));
   mqttLogger.print(F("item: "));
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.print(item);
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.println();
   String action = command.substring(command.indexOf('@') + 1, command.indexOf('$'));
   mqttLogger.print(F("action: "));
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.print(action);
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.println();
   uint32_t duration = command.substring(command.indexOf('$') + 1).toInt() * 1000;
   mqttLogger.print(F("duration: "));
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.print(duration);
-  delay(MQTT_LOGGER_DELAY);
+  //delay(500);
   mqttLogger.println();
 
-  if (item.equalsIgnoreCase("restart")) {
-    mqttLogger.println(F("Restarting ESP32 in 3 seconds..."));
-    delay(3000);
-    ESP.restart();
-  }
-
-  else if (item.equalsIgnoreCase("laser")) {
+  if (item.equalsIgnoreCase("laser")) {
     if (action.equalsIgnoreCase("on") || action.equalsIgnoreCase("1")) {
       analogWrite(laserPin, 255);
       laserActive = true;
@@ -630,11 +639,11 @@ void handleCommand(String command) {
       analogWrite(laserPin, 0);
       laserActive = false;
       mqttLogger.println(F("Laser disabled."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
     else {
       mqttLogger.println(F("Unrecognized action in handleCommand()."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
   }
 
@@ -650,11 +659,11 @@ void handleCommand(String command) {
       digitalWrite(strobePin, LOW);
       strobeActive = false;
       mqttLogger.println(F("Strobe disabled."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
     else {
       mqttLogger.println(F("Unrecognized action in handleCommand()."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
   }
 
@@ -670,16 +679,16 @@ void handleCommand(String command) {
       analogWrite(sirenPin, 0);
       sirenActive = false;
       mqttLogger.println(F("Siren disabled."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
     else {
       mqttLogger.println(F("Unrecognized action in handleCommand()."));
-      delay(MQTT_LOGGER_DELAY);
+      //delay(500);
     }
   }
 
   else {
     mqttLogger.println(F("Unrecognized item in handleCommand()."));
-    delay(MQTT_LOGGER_DELAY);
+    //delay(500);
   }
 }

@@ -1,5 +1,6 @@
 // Comment out to log only to Serial
 #define MQTT_LOGGING
+#define MQTT_LOGGER_DELAY 500
 
 #define MQTT_OUT_TOPIC "beanbag/neutralizer"
 #define MQTT_LOGGER_TOPIC "beanbag/logger"
