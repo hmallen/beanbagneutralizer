@@ -31,7 +31,7 @@ AsyncWebServer webServer(80);
 const int ledPin = 2;
 const int touchPin = 4;
 const int potPin = 32;
-const int strobePin = 35;
+const int strobePin = 25;
 const int sirenPin = 23;
 const int laserPin = 33;
 const int xServoPin = 18;
@@ -474,10 +474,10 @@ void setup(void) {
     ServoYControl.minDegree = yMinDegree;
     ServoYControl.maxDegree = yMaxDegree;*/
 
-  ServoXControl.minDegree = 40;
-  ServoXControl.maxDegree = 170;
-  ServoYControl.minDegree = 115;
-  ServoYControl.maxDegree = 175;
+  ServoXControl.minDegree = 50;
+  ServoXControl.maxDegree = 160;
+  ServoYControl.minDegree = 130;
+  ServoYControl.maxDegree = 160;
 
   mqttLogger.print(F("ServoXControl.minDegree: ")); mqttLogger.println(ServoXControl.minDegree);
   mqttLogger.print(F("ServoXControl.maxDegree: ")); mqttLogger.println(ServoXControl.maxDegree);
@@ -501,9 +501,13 @@ void setup(void) {
   ServoX.easeTo(ServoXControl.minDegree, 50);
   delay(500);
 
+
   analogWrite(laserPin, 0);
 
-  //delay(4000);
+  ServoX.write(90);
+  ServoY.write(135);
+
+  delay(1000);
 
   mqttLogger.println(F("Setup complete."));
   digitalWrite(ledPin, HIGH);
@@ -553,7 +557,15 @@ void runLaser(uint16_t duration) {
       synchronizeAllServosAndStartInterrupt();
     }
   }
+
+  if (ServoX.isMoving()) delay(1000);
+
   analogWrite(laserPin, 0);
+
+  ServoX.write(90);
+  ServoY.write(135);
+  delay(1000);
+
   laserActive = false;
   mqttLogger.println(F("Laser disabled."));
   delay(MQTT_LOGGER_DELAY);
